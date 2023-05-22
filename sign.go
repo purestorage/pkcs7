@@ -10,17 +10,19 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"time"
 )
 
 // SignedData is an opaque data structure for creating signed data payloads
 type SignedData struct {
-	sd                  signedData
-	certs               []*x509.Certificate
-	data, messageDigest []byte
-	digestOid           asn1.ObjectIdentifier
-	encryptionOid       asn1.ObjectIdentifier
+	sd                       signedData
+	certs                    []*x509.Certificate
+	dataBytes, messageDigest []byte
+	digestOid                asn1.ObjectIdentifier
+	encryptionOid            asn1.ObjectIdentifier
+	dataReader               io.Reader
 }
 
 // NewSignedData takes data and initializes a PKCS7 SignedData struct that is
@@ -39,7 +41,29 @@ func NewSignedData(data []byte) (*SignedData, error) {
 		ContentInfo: ci,
 		Version:     1,
 	}
-	return &SignedData{sd: sd, data: data, digestOid: OIDDigestAlgorithmSHA1}, nil
+	return &SignedData{sd: sd, dataBytes: data, digestOid: OIDDigestAlgorithmSHA1}, nil
+}
+
+// NewSignedSeeker takes an ioReadSeeker and initializes a PKCS7 SignedData struct that is
+// ready to be signed via AddSigner. The digest algorithm is set to SHA1 by default
+// and can be changed by calling SetDigestAlgorithm.
+func NewSignerReader(rs io.Reader) (*SignedData, error) {
+	/*
+	   content, err := asn1.Marshal(data)
+	   if err != nil {
+	           return nil, err
+	   }
+	   ci := contentInfo{
+	           ContentType: OIDData,
+	           Content:     asn1.RawValue{Class: 2, Tag: 0, Bytes: content, IsCompound: true},
+	   }
+	*/
+	ci := contentInfo{ContentType: OIDData}
+	sd := signedData{
+		ContentInfo: ci,
+		Version:     1,
+	}
+	return &SignedData{sd: sd, dataReader: rs, digestOid: OIDDigestAlgorithmSHA1}, nil
 }
 
 // SignerInfoConfig are optional values to include when adding a signer
@@ -149,7 +173,16 @@ func (sd *SignedData) AddSignerChain(ee *x509.Certificate, pkey crypto.PrivateKe
 		return err
 	}
 	h := hash.New()
-	h.Write(sd.data)
+	if sd.dataBytes != nil {
+		h.Write(sd.dataBytes)
+	} else if sd.dataReader != nil {
+		_, err = io.Copy(h, sd.dataReader)
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("Error on inbound Data")
+	}
 	sd.messageDigest = h.Sum(nil)
 	encryptionOid, err := getOIDForEncryptionAlgorithm(pkey, sd.digestOid)
 	if err != nil {
@@ -211,7 +244,17 @@ func (sd *SignedData) SignWithoutAttr(ee *x509.Certificate, pkey crypto.PrivateK
 		return err
 	}
 	h := hash.New()
-	h.Write(sd.data)
+	if sd.dataBytes != nil {
+		h.Write(sd.dataBytes)
+	} else if sd.dataReader != nil {
+		_, err = io.Copy(h, sd.dataReader)
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("Error on inbound Data")
+	}
+	//h.Write(sd.dataBytes)
 	sd.messageDigest = h.Sum(nil)
 	switch pkey := pkey.(type) {
 	case *dsa.PrivateKey:
