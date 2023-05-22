@@ -121,7 +121,7 @@ func getOIDForEncryptionAlgorithm(pkey crypto.PrivateKey, OIDDigestAlg asn1.Obje
 	case *rsa.PrivateKey:
 		switch {
 		default:
-			return OIDEncryptionAlgorithmRSA, nil
+			return OIDEncryptionAlgorithmRSASHA256, nil
 		case OIDDigestAlg.Equal(OIDEncryptionAlgorithmRSA):
 			return OIDEncryptionAlgorithmRSA, nil
 		case OIDDigestAlg.Equal(OIDDigestAlgorithmSHA1):
