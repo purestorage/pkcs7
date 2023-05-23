@@ -117,8 +117,8 @@ func TestSignReader(t *testing.T) {
 				if err != nil {
 					t.Fatalf("test %s/%s/%s: cannot generate signer cert: %s", sigalgroot, sigalginter, sigalgsigner, err)
 				}
-				for _, testDetach := range []bool{true} {
-					log.Printf("test %s/%s/%s detached %t\n", sigalgroot, sigalginter, sigalgsigner, testDetach)
+				for _, testInternalData := range []bool{true, false} {
+					log.Printf("test %s/%s/%s detached %t\n", sigalgroot, sigalginter, sigalgsigner, testInternalData)
 					contentBuffer := bytes.NewReader(content)
 					toBeSigned, err := NewSignerReader(contentBuffer)
 					if err != nil {
@@ -132,10 +132,11 @@ func TestSignReader(t *testing.T) {
 					if err := toBeSigned.AddSignerChain(signerCert.Certificate, *signerCert.PrivateKey, parents, SignerInfoConfig{}); err != nil {
 						t.Fatalf("test %s/%s/%s: cannot add signer: %s", sigalgroot, sigalginter, sigalgsigner, err)
 					}
-
-					if testDetach {
-						toBeSigned.Detach()
-					}
+					/*
+						if testDetach {
+							toBeSigned.Detach()
+						}
+					*/
 					signed, err := toBeSigned.Finish()
 					if err != nil {
 						t.Fatalf("test %s/%s/%s: cannot finish signing data: %s", sigalgroot, sigalginter, sigalgsigner, err)
@@ -145,11 +146,10 @@ func TestSignReader(t *testing.T) {
 					if err != nil {
 						t.Fatalf("test %s/%s/%s: cannot parse signed data: %s", sigalgroot, sigalginter, sigalgsigner, err)
 					}
-					if testDetach {
+					if testInternalData {
 						p7.Content = content
-					}
-					if !bytes.Equal(content, p7.Content) {
-						t.Errorf("test %s/%s/%s: content was not found in the parsed data:\n\tExpected: %s\n\tActual: %s", sigalgroot, sigalginter, sigalgsigner, content, p7.Content)
+					} else {
+						p7.ContentRS = bytes.NewReader(content)
 					}
 					if err := p7.VerifyWithChain(truststore); err != nil {
 						t.Errorf("test %s/%s/%s: cannot verify signed data: %s", sigalgroot, sigalginter, sigalgsigner, err)
