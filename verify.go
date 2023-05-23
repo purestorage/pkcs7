@@ -260,7 +260,6 @@ func certCheckSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, si
 	}
 	return ErrUnsupportedAlgorithm
 
-	return fmt.Errorf("not implemented")
 }
 
 func verifySignatureAtTime(p7 *PKCS7, signer signerInfo, truststore *x509.CertPool, currentTime time.Time) (err error) {
