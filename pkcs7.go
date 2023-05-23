@@ -12,6 +12,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 
 	_ "crypto/sha1" // for crypto.SHA1
@@ -23,6 +24,7 @@ type PKCS7 struct {
 	Certificates []*x509.Certificate
 	CRLs         []pkix.CertificateList
 	Signers      []signerInfo
+	ContentRS    io.ReadSeeker
 	raw          interface{}
 }
 

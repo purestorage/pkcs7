@@ -22,7 +22,7 @@ type SignedData struct {
 	dataBytes, messageDigest []byte
 	digestOid                asn1.ObjectIdentifier
 	encryptionOid            asn1.ObjectIdentifier
-	dataReader               io.Reader
+	dataReader               io.ReadSeeker
 }
 
 // NewSignedData takes data and initializes a PKCS7 SignedData struct that is
@@ -47,7 +47,7 @@ func NewSignedData(data []byte) (*SignedData, error) {
 // NewSignedSeeker takes an ioReadSeeker and initializes a PKCS7 SignedData struct that is
 // ready to be signed via AddSigner. The digest algorithm is set to SHA1 by default
 // and can be changed by calling SetDigestAlgorithm.
-func NewSignerReader(rs io.Reader) (*SignedData, error) {
+func NewSignerReader(rs io.ReadSeeker) (*SignedData, error) {
 	/*
 	   content, err := asn1.Marshal(data)
 	   if err != nil {

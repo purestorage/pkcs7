@@ -119,7 +119,7 @@ func TestSignReader(t *testing.T) {
 				}
 				for _, testDetach := range []bool{true} {
 					log.Printf("test %s/%s/%s detached %t\n", sigalgroot, sigalginter, sigalgsigner, testDetach)
-					contentBuffer := bytes.NewBuffer(content)
+					contentBuffer := bytes.NewReader(content)
 					toBeSigned, err := NewSignerReader(contentBuffer)
 					if err != nil {
 						t.Fatalf("test %s/%s/%s: cannot initialize signed data: %s", sigalgroot, sigalginter, sigalgsigner, err)

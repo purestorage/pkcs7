@@ -1,6 +1,7 @@
 package pkcs7
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -200,7 +201,7 @@ func certCheckSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, si
 	case crypto.MD5:
 		return x509.InsecureAlgorithmError(algo)
 	case crypto.SHA1:
-		return x509.InsecureAlgorithmError(algo)
+		//return x509.InsecureAlgorithmError(algo)
 		/*
 			// SHA-1 signatures are mostly disabled. See go.dev/issue/41682.
 			if !allowSHA1 {
@@ -211,6 +212,8 @@ func certCheckSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, si
 			}
 			fallthrough
 		*/
+		// cviecco -> I really need to remove sha1
+		fallthrough
 	default:
 		if !hashType.Available() {
 			return ErrUnsupportedAlgorithm
@@ -246,10 +249,14 @@ func certCheckSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, si
 		if pubKeyAlgo != x509.Ed25519 {
 			return signaturePublicKeyAlgoMismatchError(pubKeyAlgo, pub)
 		}
-		if !ed25519.Verify(pub, signed, signature) {
-			return errors.New("x509: Ed25519 verification failure")
-		}
-		return
+		// we need a multipass verifier here until then NOT supported
+		return ErrUnsupportedAlgorithm
+		/*
+			if !ed25519.Verify(pub, signed, signature) {
+				return errors.New("x509: Ed25519 verification failure")
+			}
+			return
+		*/
 	}
 	return ErrUnsupportedAlgorithm
 
@@ -257,7 +264,14 @@ func certCheckSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, si
 }
 
 func verifySignatureAtTime(p7 *PKCS7, signer signerInfo, truststore *x509.CertPool, currentTime time.Time) (err error) {
-	signedData := p7.Content
+	var dataReader io.ReadSeeker
+	if p7.Content != nil {
+		dataReader = bytes.NewReader(p7.Content)
+	} else if p7.ContentRS != nil {
+		dataReader = p7.ContentRS
+	} else {
+		return fmt.Errorf("no data or reader")
+	}
 	ee := getCertFromCertsByIssuerAndSerial(p7.Certificates, signer.IssuerAndSerialNumber)
 	if ee == nil {
 		return errors.New("pkcs7: No certificate for signer")
@@ -277,7 +291,10 @@ func verifySignatureAtTime(p7 *PKCS7, signer signerInfo, truststore *x509.CertPo
 			return err
 		}
 		h := hash.New()
-		h.Write(p7.Content)
+		_, err = io.Copy(h, dataReader)
+		if err != nil {
+			return err
+		}
 		computed := h.Sum(nil)
 		if subtle.ConstantTimeCompare(digest, computed) != 1 {
 			return &MessageDigestMismatchError{
@@ -285,7 +302,7 @@ func verifySignatureAtTime(p7 *PKCS7, signer signerInfo, truststore *x509.CertPo
 				ActualDigest:   computed,
 			}
 		}
-		signedData, err = marshalAttributes(signer.AuthenticatedAttributes)
+		signedData, err := marshalAttributes(signer.AuthenticatedAttributes)
 		if err != nil {
 			return err
 		}
@@ -299,6 +316,7 @@ func verifySignatureAtTime(p7 *PKCS7, signer signerInfo, truststore *x509.CertPo
 					ee.NotAfter.Format(time.RFC3339))
 			}
 		}
+		dataReader = bytes.NewReader(signedData)
 	}
 	if truststore != nil {
 		_, err = verifyCertChain(ee, p7.Certificates, truststore, currentTime)
@@ -310,11 +328,19 @@ func verifySignatureAtTime(p7 *PKCS7, signer signerInfo, truststore *x509.CertPo
 	if err != nil {
 		return err
 	}
-	return ee.CheckSignature(sigalg, signedData, signer.EncryptedDigest)
+	return certCheckSignature(ee, sigalg, dataReader, signer.EncryptedDigest)
 }
 
 func verifySignature(p7 *PKCS7, signer signerInfo, truststore *x509.CertPool) (err error) {
-	signedData := p7.Content
+	var dataReader io.ReadSeeker
+	if p7.Content != nil {
+		dataReader = bytes.NewReader(p7.Content)
+	} else if p7.ContentRS != nil {
+		dataReader = p7.ContentRS
+	} else {
+		return fmt.Errorf("no data or reader")
+	}
+
 	ee := getCertFromCertsByIssuerAndSerial(p7.Certificates, signer.IssuerAndSerialNumber)
 	if ee == nil {
 		return errors.New("pkcs7: No certificate for signer")
@@ -332,7 +358,10 @@ func verifySignature(p7 *PKCS7, signer signerInfo, truststore *x509.CertPool) (e
 			return err
 		}
 		h := hash.New()
-		h.Write(p7.Content)
+		_, err = io.Copy(h, dataReader)
+		if err != nil {
+			return err
+		}
 		computed := h.Sum(nil)
 		if subtle.ConstantTimeCompare(digest, computed) != 1 {
 			return &MessageDigestMismatchError{
@@ -340,7 +369,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo, truststore *x509.CertPool) (e
 				ActualDigest:   computed,
 			}
 		}
-		signedData, err = marshalAttributes(signer.AuthenticatedAttributes)
+		signedData, err := marshalAttributes(signer.AuthenticatedAttributes)
 		if err != nil {
 			return err
 		}
@@ -354,6 +383,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo, truststore *x509.CertPool) (e
 					ee.NotAfter.Format(time.RFC3339))
 			}
 		}
+		dataReader = bytes.NewReader(signedData)
 	}
 	if truststore != nil {
 		_, err = verifyCertChain(ee, p7.Certificates, truststore, signingTime)
@@ -365,7 +395,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo, truststore *x509.CertPool) (e
 	if err != nil {
 		return err
 	}
-	return ee.CheckSignature(sigalg, signedData, signer.EncryptedDigest)
+	return certCheckSignature(ee, sigalg, dataReader, signer.EncryptedDigest)
 }
 
 // GetOnlySigner returns an x509.Certificate for the first signer of the signed
