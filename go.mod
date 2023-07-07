@@ -1,3 +1,3 @@
-module github.com/cviecco/pkcs7
+module github.com/purestorage/pkcs7
 
 go 1.18
